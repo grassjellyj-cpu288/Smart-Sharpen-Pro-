@@ -1,146 +1,283 @@
-// script7.js - Drag and Drop เพื่อเปลี่ยนลำดับการ์ดแบบอิสระ (เริ่มต้นให้การ์ด AI อยู่บนสุด)
+// script7.js – 🃏 Drag & Drop เปลี่ยนลำดับการ์ด (ลาก-วางได้อย่างอิสระ)
 (function() {
-    'use strict';
+  'use strict';
 
-    // ฟังก์ชันยกเลิก CSS order ที่อาจมีอยู่ใน style.css (เพื่อไม่ให้ขัดแย้ง)
-    function resetCardOrderStyles() {
-        const cards = document.querySelectorAll('.controls-panel .card');
-        cards.forEach(card => {
-            card.style.order = '';
-        });
-        // ลบ inline style order ที่อาจถูกกำหนดไว้
-        const styleSheets = document.styleSheets;
-        for (let sheet of styleSheets) {
-            try {
-                const rules = sheet.cssRules || sheet.rules;
-                if (rules) {
-                    for (let rule of rules) {
-                        if (rule.selectorText && (rule.selectorText.includes('.controls-panel .card') || rule.selectorText.includes('.card'))) {
-                            if (rule.style.order !== undefined) {
-                                rule.style.order = '';
-                            }
-                        }
-                    }
-                }
-            } catch(e) { /* cross-origin stylesheet อาจไม่สามารถแก้ไขได้ */ }
-        }
+  /**
+   * ทำให้รายการการ์ดภายใน container สามารถลากเปลี่ยนลำดับได้
+   * @param {string} containerSelector – CSS selector ของ container ที่มีการ์ด
+   * @param {Object} options
+   * @param {string} [options.itemSelector='.card'] – ตัวเลือกของการ์ดแต่ละใบ
+   * @param {string} [options.dragHandleSelector=null] – ถ้าระบุ จะให้ลากเฉพาะที่ handle นี้
+   * @param {string} [options.axis='y'] – แกนที่ใช้ตัดสินใจแทรก ('x', 'y', 'free')
+   * @param {string} [options.placeholderClass='drag-placeholder'] – คลาสของ placeholder
+   * @param {string} [options.ghostClass='dragging-ghost'] – คลาสของ ghost (สำเนาขณะลาก)
+   * @param {Function} [options.onReorder=null] – callback เมื่อเรียงลำดับเสร็จ (ได้ array ของ element)
+   * @returns {Object} { destroy, container }
+   */
+  function enableDragReorder(containerSelector, options = {}) {
+    const container = document.querySelector(containerSelector);
+    if (!container) {
+      console.warn(`[DragReorder] Container "${containerSelector}" not found.`);
+      return null;
     }
 
-    // จัดลำดับเริ่มต้น: ให้การ์ด AI (การ์ดใบที่ 2) ขึ้นมาอยู่บนสุด
-    function setInitialOrder() {
-        const panel = document.querySelector('.controls-panel');
-        if (!panel) return;
-        const cards = Array.from(panel.querySelectorAll('.card'));
-        if (cards.length < 2) return;
+    const {
+      itemSelector = '.card',
+      dragHandleSelector = null,
+      axis = 'y',
+      placeholderClass = 'drag-placeholder',
+      ghostClass = 'dragging-ghost',
+      onReorder = null
+    } = options;
 
-        // เช็ค localStorage ว่ามีการบันทึกลำดับไว้หรือยัง
-        const saved = localStorage.getItem('controlsPanelCardOrder');
-        if (!saved) {
-            // ยังไม่เคยบันทึก: เลื่อนการ์ดใบที่ 2 (AI) ขึ้นไปบนสุด
-            const aiCard = cards[1]; // การ์ดลำดับที่ 2 (index 1)
-            if (aiCard && panel.firstChild !== aiCard) {
-                panel.insertBefore(aiCard, panel.firstChild);
-            }
-            // บันทึกลำดับปัจจุบันหลังปรับ
-            saveOrder();
+    let dragData = null; // เก็บสถานะการลาก
+
+    // ดึงรายการการ์ดปัจจุบัน (เฉพาะลูกที่ตรง itemSelector)
+    function getItems() {
+      return Array.from(container.querySelectorAll(itemSelector));
+    }
+
+    // สร้าง element placeholder
+    function createPlaceholder() {
+      const ph = document.createElement('div');
+      ph.className = placeholderClass;
+      ph.style.cssText = `
+        background: rgba(0,0,0,0.05);
+        border: 2px dashed #aaa;
+        border-radius: 8px;
+        transition: all 0.2s;
+        box-sizing: border-box;
+      `;
+      return ph;
+    }
+
+    // คำนวณตำแหน่งที่ควรแทรก (ดัชนี) จากพิกัดเมาส์
+    function getDropIndex(clientX, clientY) {
+      const items = getItems();
+      if (items.length === 0) return -1;
+
+      let minDist = Infinity;
+      let targetIndex = -1;
+
+      items.forEach((item, idx) => {
+        const rect = item.getBoundingClientRect();
+        let cx, cy;
+        if (axis === 'x') {
+          cx = rect.left + rect.width / 2;
+          cy = 0;
+        } else if (axis === 'y') {
+          cx = 0;
+          cy = rect.top + rect.height / 2;
+        } else { // 'free' ใช้ระยะทางแบบยุคลิด
+          cx = rect.left + rect.width / 2;
+          cy = rect.top + rect.height / 2;
+        }
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) {
+          minDist = dist;
+          targetIndex = idx;
+        }
+      });
+
+      if (targetIndex === -1) return -1;
+
+      const target = items[targetIndex];
+      const rect = target.getBoundingClientRect();
+      let before = false;
+
+      // ตัดสินใจแทรกก่อนหรือหลัง target ตามแกน
+      if (axis === 'x') {
+        before = clientX < (rect.left + rect.width / 2);
+      } else if (axis === 'y') {
+        before = clientY < (rect.top + rect.height / 2);
+      } else { // free: ใช้แกนหลักตามความต่างของตำแหน่ง
+        const dx = clientX - (rect.left + rect.width / 2);
+        const dy = clientY - (rect.top + rect.height / 2);
+        // ถ้า dy มีค่ามากกว่า dx ให้ใช้แนวตั้งเป็นหลัก
+        if (Math.abs(dy) > Math.abs(dx)) {
+          before = clientY < (rect.top + rect.height / 2);
         } else {
-            // มีลำดับบันทึกไว้แล้ว ใช้ลำดับนั้น
-            loadOrder(panel);
+          before = clientX < (rect.left + rect.width / 2);
         }
+      }
+      return before ? targetIndex : targetIndex + 1;
     }
 
-    // บันทึกลำดับการ์ดลง localStorage (อิงจากข้อความใน .card-title)
-    function saveOrder() {
-        const cards = document.querySelectorAll('.controls-panel .card');
-        const order = Array.from(cards).map(card => {
-            const titleElem = card.querySelector('.card-title');
-            return titleElem ? titleElem.innerText.trim() : '';
-        });
-        localStorage.setItem('controlsPanelCardOrder', JSON.stringify(order));
+    // ── Event handlers ──
+    function startDrag(e) {
+      const target = e.target.closest(itemSelector);
+      if (!target) return;
+
+      // ถ้ามี dragHandle ให้เช็คว่าคลิกที่ handle หรือไม่
+      if (dragHandleSelector) {
+        const handle = target.querySelector(dragHandleSelector);
+        if (!handle || !handle.contains(e.target)) return;
+      }
+
+      e.preventDefault();
+
+      const items = getItems();
+      const index = items.indexOf(target);
+      if (index === -1) return;
+
+      // เก็บข้อมูลการลาก
+      dragData = {
+        element: target,
+        index: index,
+        offsetX: e.clientX - target.getBoundingClientRect().left,
+        offsetY: e.clientY - target.getBoundingClientRect().top,
+        ghost: null,
+        placeholder: null
+      };
+
+      // สร้าง ghost (สำเนาที่ลอยตามเมาส์)
+      const ghost = target.cloneNode(true);
+      ghost.className += ' ' + ghostClass;
+      const rect = target.getBoundingClientRect();
+      ghost.style.cssText = `
+        position: fixed;
+        pointer-events: none;
+        z-index: 10000;
+        opacity: 0.85;
+        transform: scale(1.03);
+        width: ${rect.width}px;
+        height: ${rect.height}px;
+        left: ${e.clientX - dragData.offsetX}px;
+        top: ${e.clientY - dragData.offsetY}px;
+        transition: none;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        border-radius: 8px;
+      `;
+      document.body.appendChild(ghost);
+      dragData.ghost = ghost;
+
+      // ทำให้การ์ดต้นฉบับจางลง
+      target.style.opacity = '0.3';
+      target.style.pointerEvents = 'none';
+
+      // สร้าง placeholder
+      const placeholder = createPlaceholder();
+      placeholder.style.width = rect.width + 'px';
+      placeholder.style.height = rect.height + 'px';
+      // คัดลอก margin
+      const style = window.getComputedStyle(target);
+      placeholder.style.margin = style.margin;
+      placeholder.style.display = style.display === 'inline-block' ? 'inline-block' : 'block';
+      // ใส่ placeholder แทนที่ target (วางไว้ตำแหน่งเดิม)
+      target.parentNode.insertBefore(placeholder, target);
+      dragData.placeholder = placeholder;
+
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', onDragEnd);
     }
 
-    // โหลดลำดับที่บันทึกไว้ แล้วจัดเรียง DOM ใหม่
-    function loadOrder(panel) {
-        const saved = localStorage.getItem('controlsPanelCardOrder');
-        if (!saved) return;
-        const order = JSON.parse(saved);
-        const cards = Array.from(panel.querySelectorAll('.card'));
-        order.forEach(title => {
-            const targetCard = cards.find(card => {
-                const t = card.querySelector('.card-title');
-                return t && t.innerText.trim() === title;
-            });
-            if (targetCard && panel.lastChild !== targetCard) {
-                panel.appendChild(targetCard); // ย้ายไปท้ายสุดตามลำดับที่บันทึก
-            }
-        });
+    function onDragMove(e) {
+      if (!dragData) return;
+      e.preventDefault();
+
+      // ย้าย ghost
+      const ghost = dragData.ghost;
+      ghost.style.left = (e.clientX - dragData.offsetX) + 'px';
+      ghost.style.top = (e.clientY - dragData.offsetY) + 'px';
+
+      // หาตำแหน่งที่ควรวาง
+      const dropIndex = getDropIndex(e.clientX, e.clientY);
+      if (dropIndex === -1) return;
+
+      const items = getItems();
+      const currentIdx = items.indexOf(dragData.placeholder);
+      if (dropIndex === currentIdx) return;
+
+      // ย้าย placeholder ไปยังตำแหน่งใหม่
+      const parent = container;
+      const refNode = items[dropIndex] || null;
+      if (refNode && refNode !== dragData.placeholder) {
+        parent.insertBefore(dragData.placeholder, refNode);
+      } else if (dropIndex === items.length) {
+        parent.appendChild(dragData.placeholder);
+      }
     }
 
-    // เริ่มต้นระบบ Drag & Drop โดยใช้ SortableJS
-    function initDragDrop() {
-        const panel = document.querySelector('.controls-panel');
-        if (!panel) return;
+    function onDragEnd(e) {
+      if (!dragData) return;
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', onDragEnd);
 
-        // โหลด SortableJS ถ้ายังไม่มีในหน้า
-        if (typeof Sortable === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js';
-            script.onload = () => enableSortable(panel);
-            document.head.appendChild(script);
-        } else {
-            enableSortable(panel);
+      const { element: target, placeholder, ghost } = dragData;
+
+      // ลบ ghost
+      if (ghost) ghost.remove();
+
+      // ถ้ามี placeholder ให้แทรก target ใหม่ที่ตำแหน่งของ placeholder
+      if (placeholder && target) {
+        const parent = container;
+        // ใส่ target แทน placeholder
+        parent.insertBefore(target, placeholder);
+        placeholder.remove();
+        // คืนค่าสภาพการ์ด
+        target.style.opacity = '';
+        target.style.pointerEvents = '';
+
+        // เรียก callback พร้อมรายการการ์ดใหม่
+        if (typeof onReorder === 'function') {
+          const newItems = getItems();
+          onReorder(newItems);
         }
-    }
-
-    function enableSortable(panel) {
-        // เพิ่ม CSS สำหรับ visual feedback ขณะลาก
-        if (!document.getElementById('sortable-dnd-styles')) {
-            const style = document.createElement('style');
-            style.id = 'sortable-dnd-styles';
-            style.textContent = `
-                .sortable-ghost {
-                    opacity: 0.4;
-                    background: #334155;
-                    border: 2px dashed var(--theme-primary, #3B82F6);
-                }
-                .sortable-drag {
-                    opacity: 0.8;
-                    cursor: grabbing;
-                }
-                .controls-panel .card {
-                    cursor: grab;
-                    user-select: none;
-                }
-                .controls-panel .card:active {
-                    cursor: grabbing;
-                }
-            `;
-            document.head.appendChild(style);
+      } else {
+        // กรณีผิดพลาด คืนค่าสภาพ
+        if (target) {
+          target.style.opacity = '';
+          target.style.pointerEvents = '';
         }
+        if (placeholder) placeholder.remove();
+      }
 
-        // สร้าง Sortable instance
-        new Sortable(panel, {
-            animation: 250,
-            draggable: '.card',
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
-            dragClass: 'sortable-drag',
-            handle: '.card',  // ลากได้ทั้งใบ
-            onEnd: () => saveOrder()
-        });
+      dragData = null;
     }
 
-    // ฟังก์ชันหลักเริ่มต้นระบบ
-    function init() {
-        resetCardOrderStyles();
-        setInitialOrder();   // จัดลำดับเริ่มต้น (AI ขึ้นบนสุด) หากยังไม่มี localStorage
-        initDragDrop();      // เปิดให้ลากเปลี่ยนลำดับได้
+    // ── ผูก event ──
+    container.addEventListener('mousedown', startDrag);
+
+    // ── API ──
+    function destroy() {
+      container.removeEventListener('mousedown', startDrag);
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', onDragEnd);
+      if (dragData) {
+        if (dragData.ghost) dragData.ghost.remove();
+        if (dragData.placeholder) dragData.placeholder.remove();
+        dragData = null;
+      }
     }
 
-    // รันเมื่อ DOM พร้อม
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    return { destroy, container };
+  }
+
+  // ── ทำให้สามารถเรียกใช้จากภายนอก ──
+  window.enableDragReorder = enableDragReorder;
+
+  // ── เปิดใช้งานอัตโนมัติสำหรับ feature-grid (ถ้ามี) ──
+  function autoInit() {
+    const grid = document.getElementById('feature-grid');
+    if (grid) {
+      enableDragReorder('#feature-grid', {
+        itemSelector: '.fc',
+        axis: 'free',
+        placeholderClass: 'drag-placeholder',
+        ghostClass: 'dragging-ghost',
+        onReorder: (items) => {
+          console.log('✅ ลำดับการ์ดเปลี่ยน:', items.map(el => el.id || el.className));
+        }
+      });
     }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
+  } else {
+    autoInit();
+  }
+
 })();

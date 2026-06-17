@@ -1,0 +1,24 @@
+smartSharpenPro/
+│
+├── index.html                      (หน้าเว็บหลัก)
+│
+├── css/
+│   └── style.css                   (สไตล์ทั้งหมด)
+│
+└── js/
+    ├── script.js                   ⭐ ตัวหลัก SmartSharpenPro (คลาสหลัก)
+    │
+    ├── script1.js                  🎤 Advanced Voice AI (ต่อเนื่อง + ตอบ "ครับเจ้านาย")
+    │
+    ├── script2.js                  ⚠️ [ถูกแทนที่โดย script5.js] 
+    │   (Checkerboard พื้นฐาน - ไม่ต้องใช้แล้ว)
+    │
+    ├── script3.js                  🧹 ล้างขยะ (beforeunload)
+    │
+    ├── script4.js                  🎨 คลังฉากหลังอัจฉริยะ (เปลี่ยนพื้นหลัง)
+    │
+    ├── script5.js                  ✅ Checkerboard Ultimate (แทน script2)
+    │
+    ├── script6.js                  🔒 ป้องกัน Developer Tools
+    │
+    └── script7.js                  🃏 Drag & Drop เปลี่ยนลำดับการ์ด

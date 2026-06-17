@@ -1,16 +1,10 @@
 /**
- * script1.js - Advanced Voice AI Enhancement (Fixed Version)
- * ฟีเจอร์: พูดต่อเนื่อง (continuous), แสดงข้อความสด (interim results),
- *          ตอบโต้แบบสุภาพ "ครับเจ้านาย", ปุ่มเปิด/ปิดระบบ AI,
- *          พร้อมแก้ไขปัญหา restart recognition, pending confirmation,
- *          และป้องกันการโหลดซ้ำ
+ * script1.js - Advanced Voice AI Enhancement 
+ * ฟีเจอร์: พูดต่อเนื่อง (continuous), แสดงข้อความสด (interim results), 
+ *          ตอบโต้แบบสุภาพ "ครับเจ้านาย", และปุ่มเปิด/ปิดระบบ AI
  */
 
 (function() {
-    // ป้องกันการเรียกใช้ซ้ำ (multiple instances)
-    if (window._voiceAIEnhanced) return;
-    window._voiceAIEnhanced = true;
-
     let attempts = 0;
     const MAX_ATTEMPTS = 100;
     const waitForEditor = setInterval(() => {
@@ -28,21 +22,8 @@
         const editor = window.editor;
         if (!editor) return;
 
-        // Fallback สำหรับ editor.speakThai (ถ้าไม่มี)
-        if (typeof editor.speakThai !== 'function') {
-            editor.speakThai = function(text) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'th-TH';
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(utterance);
-                console.log('[speakThai]', text);
-            };
-        }
-
-        // ---------- ตัวแปรสถานะระบบ AI ----------
-        let aiActive = true;
-        let isRestartingRecog = false;    // ป้องกันการ restart ซ้อน
-        let recognition = editor.recognition; // alias
+        // ---------- ตัวแปรสถานะระบบ AI (ใช้ร่วมกันทั้งฟังก์ชัน) ----------
+        let aiActive = true;   // เริ่มต้นระบบเปิดทำงาน
 
         // ---------- สร้าง UI แสดง transcript แบบ real-time ----------
         if (!document.getElementById('voiceRealtimeText')) {
@@ -71,7 +52,7 @@
         }
         const realtimeDisplay = document.getElementById('voiceRealtimeText');
 
-        // ---------- ชุดคำลงท้ายสุภาพ ----------
+        // ---------- ชุดคำลงท้ายสุภาพ (ครับเจ้านาย) ----------
         const responseSuffixes = [
             "ครับเจ้านาย", "รับทราบครับเจ้านาย", "พร้อมแล้วครับเจ้านาย",
             "ได้เลยครับเจ้านาย", "ครับท่าน", "ครับคุณชาย", "ครับผม", "ครับ", "รับใช้เสมอครับเจ้านาย"
@@ -84,7 +65,7 @@
             return `${text} ${suffix}`;
         }
 
-        // ---------- ชุดข้อความตอบกลับ ----------
+        // ---------- ชุดข้อความตอบกลับแบบสุภาพ ----------
         const aiResponses = {
             greeting: ["สวัสดีครับเจ้านาย พร้อมช่วยเหลือ", "หวัดดีครับ มีอะไรให้รับใช้เจ้านาย", "ยินดีรับใช้ครับเจ้านาย พูดมาได้เลย", "ว่าไงครับเจ้านาย"],
             farewell: ["ลาก่อนครับเจ้านาย", "ไว้พบกันใหม่ครับเจ้านาย", "ขอลาผู้ดีครับเจ้านาย", "บาย ๆ นะเจ้านาย"],
@@ -97,8 +78,7 @@
             cantAdjustRelative: ["ไม่รู้ค่าปัจจุบันครับเจ้านาย กรุณาระบุตัวเลขเต็ม เช่น 'เพิ่มความคมชัดเป็น 70'", "บอกมาเป็นตัวเลขจะดีกว่าครับเจ้านาย"],
             learnSynonym: ["บันทึกคำ '{word}' เป็นความหมายเดียวกับ '{action}' แล้วครับเจ้านาย", "เข้าใจแล้วครับว่า '{word}' หมายถึง {action} เจ้านาย"],
             askWhichAction: ["เจ้านายต้องการปรับอะไรครับ? (ความคมชัด, ความสว่าง, คอนทราสต์, ความอิ่มตัว)", "ปรับค่าไหนดีครับเจ้านาย? พูด 'ความคมชัด' หรือ 'ความสว่าง'"],
-            roundingNotify: ["ปัดค่าตามขั้นตอนละ {step} นะครับเจ้านาย", "ปรับเป็นครั้งละ {step} หน่วยครับเจ้านาย"],
-            confirmPrompt: ["เจ้านายต้องการให้ปรับ {param} เป็น {value} หรือไม่? (ใช่/ไม่)", "ยืนยันการตั้งค่า {param} = {value} ไหมครับ?"]
+            roundingNotify: ["ปัดค่าตามขั้นตอนละ {step} นะครับเจ้านาย", "ปรับเป็นครั้งละ {step} หน่วยครับเจ้านาย"]
         };
 
         function randomResponse(category, placeholders = {}) {
@@ -180,7 +160,7 @@
             const slider = document.getElementById(sliderId);
             return slider ? parseFloat(slider.value) : null;
         }
-        function parseRelativeAdjust(text, paramName) {
+        function parseRelativeAdjust(text, paramName) { /* เหมือนเดิม */ 
             const lower = text.toLowerCase();
             const cfg = aiKnowledge.adjustables[paramName];
             if (!cfg) return null;
@@ -215,47 +195,22 @@
             else if (['saturation','brightness','contrast'].includes(paramName) && editor.applyColorBoost) editor.applyColorBoost();
         }
 
-        // ---------- Pending Confirmation Queue (แก้ไขให้ทำงานจริง) ----------
-        let confirmationQueue = [];
-        let isConfirming = false;
-        let currentConfirmResolver = null; // ใช้ Promise เพื่อรอคำตอบ
-
-        function setPendingConfirmation(intent, entities, askMessage = null) {
-            return new Promise((resolve) => {
-                confirmationQueue.push({ intent, entities, resolve, timestamp: Date.now() });
-                if (!isConfirming) processConfirmationQueue();
-            });
-        }
-
+        // ---------- Pending Confirmation Queue ----------
+        let confirmationQueue = [], isConfirming = false;
+        function setPendingConfirmation(intent, entities) { confirmationQueue.push({ intent, entities, timestamp: Date.now() }); if (!isConfirming) processConfirmationQueue(); }
         async function processConfirmationQueue() {
-            if (confirmationQueue.length === 0) {
-                isConfirming = false;
-                return;
-            }
+            if (confirmationQueue.length === 0) { isConfirming = false; return; }
             isConfirming = true;
-            const pending = confirmationQueue[0];
-            const paramName = (pending.intent === 'sharpen') ? 'amount' : pending.intent;
-            const cfg = aiKnowledge.adjustables[paramName];
-            let valueDesc = pending.entities.value !== undefined ? pending.entities.value : 'ค่าที่ต้องการ';
-            if (cfg && pending.entities.value !== undefined) {
-                valueDesc = pending.entities.value;
-            }
-            editor.speakThai(randomResponse('confirmPrompt', { param: paramName, value: valueDesc }));
+            editor.speakThai(randomResponse('askWhichAction'));
         }
-
-        // ฟังก์ชันนี้จะถูกเรียกเมื่อผู้ใช้ตอบ 'ใช่' หรือ 'ไม่'
+        function getCurrentPending() { return confirmationQueue.length ? confirmationQueue[0] : null; }
         function resolvePending(confirmed) {
-            if (confirmationQueue.length === 0) return null;
+            if (!confirmationQueue.length) return null;
             const pending = confirmationQueue.shift();
-            if (confirmed) {
-                // เรียก executeIntent อีกครั้งโดยไม่ต้องถามยืนยันอีก (loop protection)
-                pending.resolve({ confirmed: true, intent: pending.intent, entities: pending.entities });
-            } else {
-                editor.speakThai("ยกเลิกคำสั่งแล้วครับเจ้านาย");
-                pending.resolve({ confirmed: false });
-            }
+            if (confirmed) return pending;
+            editor.speakThai("ยกเลิกคำสั่งแล้วครับเจ้านาย");
             processConfirmationQueue();
-            return pending;
+            return null;
         }
 
         // ---------- Intent Parser ----------
@@ -263,16 +218,11 @@
             const lower = command.toLowerCase();
             let intent = null, entities = {};
             const synonyms = getAllSynonyms();
-
-            // ตรวจสอบการยืนยันก่อน (จัดการแยกออกมา)
-            if (/(ใช่|ok|yes|รับ|ตกลง|ยืนยัน|แน่นอน)/.test(lower)) {
-                return { intent: 'confirm_yes', entities };
+            const pending = getCurrentPending();
+            if (pending) {
+                if (/(ใช่|ok|yes|รับ|ตกลง|ยืนยัน|แน่นอน)/.test(lower)) return { intent: 'confirm_yes', entities };
+                if (/(ไม่|no|cancel|ยกเลิก|ไม่เอา|ไม่ใช่)/.test(lower)) return { intent: 'confirm_no', entities };
             }
-            if (/(ไม่|no|cancel|ยกเลิก|ไม่เอา|ไม่ใช่)/.test(lower)) {
-                return { intent: 'confirm_no', entities };
-            }
-
-            // คำทักทาย ฯลฯ
             if (aiKnowledge.greetings.some(w => lower.includes(w))) return { intent: 'greeting', entities };
             if (aiKnowledge.farewells.some(w => lower.includes(w))) return { intent: 'farewell', entities };
             if (aiKnowledge.thanks.some(w => lower.includes(w))) return { intent: 'thank', entities };
@@ -315,22 +265,8 @@
         }
 
         async function executeIntent(intent, entities) {
-            // จัดการ confirm_yes / confirm_no
-            if (intent === 'confirm_yes') {
-                if (confirmationQueue.length > 0) {
-                    const result = resolvePending(true);
-                    if (result && result.confirmed !== false) {
-                        // เรียก execution ใหม่จาก pending intent
-                        return await executeIntent(result.intent, result.entities);
-                    }
-                }
-                return true;
-            }
-            if (intent === 'confirm_no') {
-                resolvePending(false);
-                return true;
-            }
-
+            if (intent === 'confirm_yes') { const pending = resolvePending(true); if (pending) return await executeIntent(pending.intent, pending.entities); return true; }
+            if (intent === 'confirm_no') { resolvePending(false); return true; }
             switch(intent) {
                 case 'greeting': editor.speakThai(randomResponse('greeting')); return true;
                 case 'farewell': editor.speakThai(randomResponse('farewell')); return true;
@@ -358,17 +294,15 @@
                             return true;
                         }
                     }
-                    // ถ้าไม่มีค่าชัดเจน ให้รอการยืนยัน
-                    await setPendingConfirmation(intent, entities);
+                    setPendingConfirmation(intent, entities);
                     return true;
-                case 'zoom': if (editor.toggleZoom) editor.toggleZoom(); else editor.speakThai("ไม่สามารถซูมได้ครับเจ้านาย"); return true;
+                case 'toggleZoom': if (editor.toggleZoom) editor.toggleZoom(); else editor.speakThai("ไม่สามารถซูมได้ครับเจ้านาย"); return true;
                 case 'upload': if (editor.uploadBtn) editor.uploadBtn.click(); else editor.speakThai("ไม่สามารถอัปโหลดได้ครับเจ้านาย"); return true;
                 case 'noop': return true;
                 default: return false;
             }
         }
 
-        // แทนที่ processVoiceCommand
         const originalProcess = editor.processVoiceCommand?.bind(editor);
         editor.processVoiceCommand = async function(cmd) {
             const { intent, entities } = parseIntent(cmd);
@@ -377,7 +311,7 @@
             else if (!executed) editor.speakThai(randomResponse('unknown'));
         };
 
-        // ---------- ตั้งค่า Speech Recognition (แก้ไขการ restart และ error handling) ----------
+        // ---------- ตั้งค่า Speech Recognition (ต่อเนื่อง + interim) และเชื่อมกับปุ่มเปิด/ปิด ----------
         if (editor.recognition) {
             const recog = editor.recognition;
             recog.continuous = true;
@@ -415,25 +349,13 @@
                 if (originalOnResult) originalOnResult.call(recog, event);
             };
             
-            // แก้ไข onend: ใช้ flag ป้องกันการ restart ซ้ำ และหน่วงเวลา
+            // กำหนด onend ใหม่ โดยตรวจสอบ aiActive
             recog.onend = function(event) {
                 console.log('Recognition ended, aiActive =', aiActive);
-                if (aiActive && !isRestartingRecog) {
-                    isRestartingRecog = true;
-                    setTimeout(() => {
-                        try {
-                            if (aiActive && recog && recog.state !== 'running') {
-                                recog.start();
-                                console.log('Recognition restarted successfully');
-                            }
-                        } catch(e) {
-                            console.warn('Restart failed', e);
-                            if (realtimeDisplay) realtimeDisplay.innerHTML = '⚠️ เกิดข้อผิดพลาดในการฟัง คลิกที่หน้าเว็บเพื่อเริ่มใหม่';
-                        } finally {
-                            isRestartingRecog = false;
-                        }
-                    }, 300);
-                } else if (!aiActive) {
+                if (aiActive) {
+                    // ถ้าระบบยัง active ให้ restart ต่อเนื่อง
+                    try { recog.start(); } catch(e) { console.warn('Restart failed', e); }
+                } else {
                     if (realtimeDisplay) realtimeDisplay.innerHTML = '⏸️ ระบบ AI ถูกปิดใช้งาน (ไม่ฟังเสียง)';
                 }
                 if (originalOnEnd) originalOnEnd.call(recog, event);
@@ -443,28 +365,18 @@
                 console.error('Recognition error:', event.error);
                 if (event.error === 'not-allowed') editor.speakThai("กรุณาอนุญาตไมโครโฟน และคลิกที่หน้าเว็บอีกครั้งครับเจ้านาย");
                 else if (event.error === 'network') editor.speakThai("เครือข่ายไม่เสถียร กำลังลองใหม่ครับเจ้านาย");
-                else if (event.error === 'no-speech') {
-                    // ไม่มีเสียง ไม่ต้องทำอะไร
-                } else {
-                    editor.speakThai("เกิดปัญหาการจดจำเสียงครับเจ้านาย");
-                }
                 if (originalOnError) originalOnError.call(recog, event);
             };
             
+            // เริ่มการฟังอัตโนมัติ (โดยคำนึงถึง aiActive = true)
             function startListening() {
                 if (!aiActive) return;
-                try {
-                    if (recog.state !== 'running') {
-                        recog.start();
-                        console.log('✅ Continuous voice recognition started');
-                    }
-                } catch(e) {
+                try { recog.start(); console.log('✅ Continuous voice recognition started'); } 
+                catch(e) {
                     console.warn('Auto start failed, waiting for user click', e);
                     if (realtimeDisplay) realtimeDisplay.innerHTML = '🖱️ คลิกที่หน้าเว็บเพื่อเริ่มระบบเสียง';
                     const startOnClick = function() {
-                        if (aiActive) {
-                            try { if (recog.state !== 'running') recog.start(); } catch(err) {}
-                        }
+                        if (aiActive) try { recog.start(); } catch(err) {}
                         document.removeEventListener('click', startOnClick);
                         document.removeEventListener('touchstart', startOnClick);
                     };
@@ -477,7 +389,7 @@
 
         function escapeHtml(str) { return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
-        // ---------- สร้างปุ่มเปิด/ปิดระบบ AI ----------
+        // ---------- สร้างปุ่มเปิด/ปิดระบบ AI (ที่มุมขวาล่าง) ----------
         if (!document.getElementById('voiceAiToggleBtn')) {
             const btnContainer = document.createElement('div');
             btnContainer.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 10000;';
@@ -514,9 +426,7 @@
                 if (aiActive) return;
                 aiActive = true;
                 if (editor.recognition) {
-                    try {
-                        if (editor.recognition.state !== 'running') editor.recognition.start();
-                    } catch(e) { console.warn("Start failed", e); }
+                    try { editor.recognition.start(); } catch(e) { console.warn("Start failed", e); }
                 }
                 updateButtonUI();
                 editor.speakThai("เปิดระบบเสียง AI แล้วครับเจ้านาย");
@@ -526,36 +436,26 @@
             updateButtonUI();
         }
         
-        // override start/stop voice command ให้สอดคล้องกับ aiActive
+        // override startVoiceCommand/stopVoiceCommand ให้สอดคล้องกับ aiActive
         const originalStartCmd = editor.startVoiceCommand;
         editor.startVoiceCommand = function() {
             if (editor.recognition) {
-                try { 
-                    if (editor.recognition.state !== 'running') editor.recognition.start();
-                    aiActive = true; 
-                    if (typeof updateButtonUI === 'function') updateButtonUI();
-                    editor.speakThai("เริ่มฟังเสียงแบบต่อเนื่องแล้วครับเจ้านาย");
-                } catch(e) { 
-                    if(e.name !== 'InvalidStateError') editor.speakThai("เริ่มไม่สำเร็จครับเจ้านาย");
-                }
+                try { editor.recognition.start(); aiActive = true; updateButtonUI?.(); editor.speakThai("เริ่มฟังเสียงแบบต่อเนื่องแล้วครับเจ้านาย"); } 
+                catch(e) { if(e.name !== 'InvalidStateError') editor.speakThai("เริ่มไม่สำเร็จครับเจ้านาย"); }
             } else editor.speakThai("ไม่รองรับการจดจำเสียงครับเจ้านาย");
         };
         const originalStopCmd = editor.stopVoiceCommand;
         editor.stopVoiceCommand = function() {
             if (editor.recognition) {
-                try { 
-                    editor.recognition.stop();
-                    aiActive = false; 
-                    if (typeof updateButtonUI === 'function') updateButtonUI();
-                    editor.speakThai("หยุดฟังแล้วครับเจ้านาย");
-                } catch(e) {}
+                try { editor.recognition.stop(); aiActive = false; updateButtonUI?.(); editor.speakThai("หยุดฟังแล้วครับเจ้านาย"); } 
+                catch(e) {}
             }
         };
         
         const voiceStatusSpan = document.getElementById('voiceStatusMsg');
         if (voiceStatusSpan) { voiceStatusSpan.title = "โหมดต่อเนื่อง + ปุ่มเปิดปิด"; voiceStatusSpan.style.cursor = "help"; }
         
-        console.log('✅ Advanced Voice AI with ON/OFF button, fixed restart & confirmation enabled');
+        console.log('✅ Advanced Voice AI with ON/OFF button and polite responses enabled');
         editor.speakThai("ระบบเสียงอัจฉริยะพร้อมใช้งาน มีปุ่มเปิดปิดที่มุมล่างขวานะครับเจ้านาย");
     }
 })();
